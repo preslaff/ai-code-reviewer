@@ -1,0 +1,5 @@
+langgraph
+langchain
+openai
+PyGithub
+python-dotenv

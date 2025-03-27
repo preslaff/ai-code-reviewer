@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Code Review Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>AI Code Review Dashboard</h1>
+  <table>
+    <thead>
+      <tr><th>PR</th><th>File</th><th>Line</th><th>Comment</th></tr>
+    </thead>
+    <tbody>
+      {% for pr, file, line, comment in reviews %}
+      <tr>
+        <td>{{ pr }}</td>
+        <td>{{ file }}</td>
+        <td>{{ line }}</td>
+        <td>{{ comment }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
