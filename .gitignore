@@ -11,3 +11,4 @@ web_dashboard/reviews.db
 *.egg-info/
 dist/
 build/
+web_dashboard/reviews.db

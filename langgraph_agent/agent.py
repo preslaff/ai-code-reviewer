@@ -1,6 +1,3 @@
-# -------------------------------------------
-# File: langgraph_agent/agent.py
-# -------------------------------------------
 import os
 import argparse
 from dotenv import load_dotenv
@@ -8,7 +5,7 @@ from github import Github
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
-from utils import parse_feedback_to_comments, store_review_db
+from .utils import parse_feedback_to_comments, store_review_db
 
 def main():
     parser = argparse.ArgumentParser(description="Run the AI code reviewer on a GitHub PR.")
@@ -16,14 +13,14 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print comments instead of posting them")
     parser.add_argument("--save-db", action="store_false", help="Do not save review data to the database")
     parser.add_argument("--model", type=str, default="gpt-4", help="Language model to use (default: gpt-4)")
-    parser.add_argument("--repo", type=str, help="Repository name in the form owner/repo (overrides .env GITHUB_REPOSITORY)", default=None)
+    parser.add_argument("--repo", type=str, help="GitHub repository override in format owner/repo")
     args = parser.parse_args()
 
     load_dotenv()
 
     openai_key = os.getenv("OPENAI_API_KEY")
     github_token = os.getenv("GITHUB_TOKEN")
-    repo_name = os.getenv("GITHUB_REPOSITORY")
+    repo_name = args.repo or os.getenv("GITHUB_REPOSITORY")
     pr_number = args.pr or os.getenv("PR_NUMBER")
 
     if not all([openai_key, github_token, repo_name, pr_number]):
@@ -88,8 +85,15 @@ Provide concise comments with line numbers where applicable."""
     graph.add_edge("review_file", "post_inline_comments")
     graph.add_edge("post_inline_comments", END)
 
+    all_summaries = []
     for file in files:
         if file.patch:
-            graph.invoke({"file": file})
+            result = graph.invoke({"file": file})
+            review_text = result.get("review", "")
+            all_summaries.append(f"### `{file.filename}`\n{review_text}")
 
-    print("✅ Review complete." + (" (dry run, no comments posted)" if args.dry_run else " Comments added to PR."))
+    summary_text = "\n\n".join(all_summaries)
+    if not args.dry_run:
+        pr.create_issue_comment(f"🤖 AI Review Summary for PR #{pr_number}:\n\n{summary_text}")
+
+    print("✅ Review complete." + (" (dry run, no comments posted)" if args.dry_run else " Comments added to PR and summary posted."))
