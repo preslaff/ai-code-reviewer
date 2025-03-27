@@ -44,8 +44,14 @@ python -m venv venv
 venv\Scripts\activate
 pip install -e .
 ```
-
 > On Linux/macOS: use `source venv/bin/activate`
+
+### 4. Start the Flask Dashboard (Python CLI)
+```bash
+cd web_dashboard
+python app.py
+```
+Then open: [http://localhost:5000](http://localhost:5000)
 
 ---
 
@@ -94,6 +100,11 @@ make docker-run
 Start the dashboard:
 ```bash
 make dashboard
+```
+Or manually:
+```bash
+cd web_dashboard
+python app.py
 ```
 Then open: [http://localhost:5000](http://localhost:5000)
 
