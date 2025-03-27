@@ -77,6 +77,7 @@ Provide concise comments with line numbers where applicable."""
                     body=comment["body"],
                     path=file.filename,
                     line=comment["line"],
+                    commit=file.sha,
                     side="RIGHT"
                 )
             if args.save_db:
