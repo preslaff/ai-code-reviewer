@@ -1,11 +1,12 @@
-# -------------------------------------------
-# File: .github/workflows/ai_review.yml
-# -------------------------------------------
 name: LangGraph AI Code Review
 
 on:
   pull_request:
     types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   review:
@@ -13,6 +14,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -20,12 +22,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r langgraph_agent/requirements.txt
+          pip install -r web_dashboard/requirements.txt
           pip install python-dotenv
+          pip install .
 
       - name: Run LangGraph AI Reviewer
-        run: python langgraph_agent/agent.py
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: ai-review
