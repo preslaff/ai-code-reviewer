@@ -6,6 +6,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 from .utils import parse_feedback_to_comments, store_review_db
+from typing import TypedDict, Optional
+
+class ReviewState(TypedDict):
+    file: Optional[object]
+    review: str
 
 def main():
     parser = argparse.ArgumentParser(description="Run the AI code reviewer on a GitHub PR.")
@@ -78,7 +83,7 @@ Provide concise comments with line numbers where applicable."""
                 store_review_db(pr_number, file.filename, comments)
         return {}
 
-    graph = StateGraph({"file": None, "review": ""})
+    graph = StateGraph(ReviewState)
     graph.add_node("review_file", review_file)
     graph.add_node("post_inline_comments", post_inline_comments)
     graph.set_entry_point("review_file")
