@@ -75,9 +75,9 @@ Provide concise comments with line numbers where applicable."""
             for comment in comments:
                 pr.create_review_comment(
                     body=comment["body"],
-                    commit_id=file.sha,
                     path=file.filename,
                     line=comment["line"],
+                    side="RIGHT"
                 )
             if args.save_db:
                 store_review_db(pr_number, file.filename, comments)
