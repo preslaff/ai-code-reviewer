@@ -1,3 +1,5 @@
+![AI Code Review](https://github.com/preslaff/ai-code-reviewer/actions/workflows/ai_review.yml/badge.svg)
+
 # 🤖 AI Code Reviewer
 
 A complete AI-powered GitHub pull request reviewer using LangGraph and OpenAI.
@@ -6,10 +8,38 @@ A complete AI-powered GitHub pull request reviewer using LangGraph and OpenAI.
 
 ## 📦 Features
 
-- ✅ Automatic inline comments on GitHub PRs
+- ✅ Automatically reviews PRs using GPT-4
+- ✅ Flags bugs, performance issues, security risks, readability problems
+- ✅ Posts a detailed AI summary comment in PR
 - ✅ Run locally, with GitHub Actions, or in Docker
-- ✅ Flask dashboard to review AI comments
+- ✅ Optional Flask dashboard to review AI comments
 - ✅ Supports `.env`, CLI flags, dry run, model override
+
+---
+
+## 📁 Project Structure
+```text
+ai-code-reviewer/
+├── .github/workflows/
+│   └── ai_review.yml           # GitHub Action trigger on PRs
+├── langgraph_agent/
+│   ├── agent.py                # Main entrypoint for the AI reviewer
+│   ├── prompt.py               # Prompt used for LLM code review
+│   ├── review_utils.py         # Feedback parsing + DB save logic
+│   └── requirements.txt
+├── web_dashboard/
+│   ├── app.py                  # Flask-based dashboard
+│   ├── templates/
+│   │   └── index.html
+│   ├── static/
+│   │   └── style.css
+│   ├── reviews.db              # Review database (SQLite)
+│   └── requirements.txt
+├── Dockerfile
+├── Makefile
+├── .env                        # Environment variables (not committed)
+└── README.md
+```
 
 ---
 
@@ -123,29 +153,6 @@ PR_NUMBER=123
 Use CLI overrides:
 ```bash
 ai-review --repo owner/repo --pr 42
-```
-
----
-
-## 📁 Project Structure
-```
-ai-code-reviewer/
-├── langgraph_agent/          # Core reviewer logic
-│   ├── agent.py              # LangGraph AI agent
-│   ├── utils.py              # Comment parser + DB utils
-│   └── requirements.txt
-├── web_dashboard/            # Flask review viewer
-│   ├── app.py
-│   ├── templates/index.html
-│   ├── static/style.css
-│   ├── requirements.txt
-│   └── reviews.db
-├── .github/workflows/        # GitHub Actions workflow
-│   └── ai_review.yml
-├── .env                      # API tokens & config
-├── Dockerfile                # Container support
-├── Makefile                  # Convenience commands
-└── README.md
 ```
 
 ---
