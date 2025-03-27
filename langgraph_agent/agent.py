@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 from github import Github
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from langchain_core.prompts import ChatPromptTemplate
-from .utils import parse_feedback_to_comments, store_review_db
+from .prompt import prompt
+from .review_utils import parse_feedback_to_comments, store_review_db
 
 class ReviewState(TypedDict):
     file: Optional[object]
@@ -41,21 +41,6 @@ def main():
     files = pr.get_files()
 
     llm = ChatOpenAI(model=args.model, api_key=openai_key)
-
-    prompt = ChatPromptTemplate.from_template(
-        """You're an expert AI code reviewer. Identify and explain:
-- Bugs
-- Security vulnerabilities
-- Performance issues
-- Readability and maintainability problems
-
-Diff for {filename}:
-```diff
-{patch}
-```
-
-Provide concise comments with line numbers where applicable."""
-    )
 
     def review_file(state):
         file = state["file"]
