@@ -1,12 +1,12 @@
 import os
 import argparse
+from typing import TypedDict, Optional
 from dotenv import load_dotenv
 from github import Github
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 from .utils import parse_feedback_to_comments, store_review_db
-from typing import TypedDict, Optional
 
 class ReviewState(TypedDict):
     file: Optional[object]
@@ -90,10 +90,12 @@ Provide concise comments with line numbers where applicable."""
     graph.add_edge("review_file", "post_inline_comments")
     graph.add_edge("post_inline_comments", END)
 
+    app = graph.compile()
     all_summaries = []
+
     for file in files:
         if file.patch:
-            result = graph.invoke({"file": file})
+            result = app.invoke({"file": file})
             review_text = result.get("review", "")
             all_summaries.append(f"### `{file.filename}`\n{review_text}")
 
