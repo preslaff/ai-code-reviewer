@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
@@ -21,11 +25,6 @@ jobs:
           pip install -r web_dashboard/requirements.txt
           pip install python-dotenv
           pip install .
-
-      - name: Debug ENV
-        run: |
-          echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
-          echo "PR_NUMBER=${PR_NUMBER}"
 
       - name: Run LangGraph AI Reviewer
         env:
