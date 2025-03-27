@@ -18,8 +18,9 @@ make install
 
 ### 🤖 Run a review
 ```bash
-make run            # Uses .env PR_NUMBER
-ai-review --pr 42   # Manually specify PR number
+make run                    # Uses .env PR_NUMBER and GITHUB_REPOSITORY
+ai-review --pr 42           # Manually specify PR number
+ai-review --pr 42 --repo owner/repo-name  # Override repo name
 ```
 
 ### 🧪 Test dry run mode
@@ -54,8 +55,13 @@ Set the following in your `.env`:
 ```
 OPENAI_API_KEY=your_key
 GITHUB_TOKEN=your_token
-GITHUB_REPOSITORY=username/repo
+GITHUB_REPOSITORY=owner/repo_name
 PR_NUMBER=123
+```
+
+You can also override `GITHUB_REPOSITORY` using:
+```bash
+ai-review --repo owner/repo-name
 ```
 
 ## 📂 Project Structure

@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print comments instead of posting them")
     parser.add_argument("--save-db", action="store_false", help="Do not save review data to the database")
     parser.add_argument("--model", type=str, default="gpt-4", help="Language model to use (default: gpt-4)")
+    parser.add_argument("--repo", type=str, help="Repository name in the form owner/repo (overrides .env GITHUB_REPOSITORY)", default=None)
     args = parser.parse_args()
 
     load_dotenv()
