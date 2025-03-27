@@ -72,14 +72,6 @@ Provide concise comments with line numbers where applicable."""
             for c in comments:
                 print(f"  Line {c['line']}: {c['body']}")
         else:
-            for comment in comments:
-                pr.create_review_comment(
-                    body=comment["body"],
-                    path=file.filename,
-                    line=comment["line"],
-                    commit=repo.get_commit(pr.head.sha),
-                    side="RIGHT"
-                )
             if args.save_db:
                 store_review_db(pr_number, file.filename, comments)
         return {}
@@ -99,7 +91,7 @@ Provide concise comments with line numbers where applicable."""
             result = app.invoke({"file": file})
             review_text = result.get("review", "")
             if review_text.strip():
-                all_summaries.append(f"### 📄 `{file.filename}`\n{review_text}")
+                all_summaries.append(f"<details><summary>📄 `{file.filename}`</summary>\n\n{review_text}\n\n</details>")
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
