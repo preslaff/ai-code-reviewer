@@ -98,10 +98,12 @@ Provide concise comments with line numbers where applicable."""
         if file.patch:
             result = app.invoke({"file": file})
             review_text = result.get("review", "")
-            all_summaries.append(f"### `{file.filename}`\n{review_text}")
+            if review_text.strip():
+                all_summaries.append(f"### 📄 `{file.filename}`\n{review_text}")
 
-    summary_text = "\n\n".join(all_summaries)
-    if not args.dry_run:
-        pr.create_issue_comment(f"🤖 AI Review Summary for PR #{pr_number}:\n\n{summary_text}")
+    if all_summaries and not args.dry_run:
+        summary_text = "\n\n".join(all_summaries)
+        formatted_summary = f"## 🤖 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
+        pr.create_issue_comment(formatted_summary)
 
     print("✅ Review complete." + (" (dry run, no comments posted)" if args.dry_run else " Comments added to PR and summary posted."))
