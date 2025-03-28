@@ -106,7 +106,8 @@ def main():
         diff_block = extract_diff_snippet(file.patch or "", 0)  # Use 0 to include entire diff context
         all_summaries.append(f"<details><summary>📄 {file.filename}</summary>
 
-{result['review_text']}</details>")
+{result['review_text']}
+</details>")
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
