@@ -81,10 +81,9 @@ def main():
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
                 pr.create_review_comment(
                     body=comment_body,
-                    commit_id=commit.sha,
                     path=file.filename,
                     line=c['line'],
-                    side="RIGHT",
+                    side="RIGHT"
                 )
 
             if args.save_db:
