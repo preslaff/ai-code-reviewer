@@ -51,7 +51,8 @@ def main():
 
     llm = ChatOpenAI(model=args.model)
 
-    def review_code(file):
+    def review_code(state):
+        file = state["file"]
         patch = file.patch or ""
         filename = file.filename
         prompt = [
@@ -92,7 +93,7 @@ def main():
         return {}
 
     builder = StateGraph(ReviewState)
-    builder.add_node("review", RunnableLambda(review_code))
+    builder.add_node("review", RunnableLambda(review_code))  # expects full state
     builder.add_node("comment", RunnableLambda(post_inline_comments))
     builder.add_edge("review", "comment")
     builder.set_entry_point("review")
@@ -101,7 +102,7 @@ def main():
 
     all_summaries = []
     for file in pr.get_files():
-        result = app.invoke({"file": file})
+        result = app.invoke({"file": file})  # wraps state input
         diff_block = extract_diff_snippet(file.patch or "", 0)  # Use 0 to include entire diff context
         all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{result['review_text']}\n\n{diff_block}</details>")
 
