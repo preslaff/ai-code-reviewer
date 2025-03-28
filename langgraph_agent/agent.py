@@ -75,7 +75,7 @@ def main():
                 if snippet:
                     print(snippet)
         else:
-            commit = repo.get_commit(file.sha)
+            commit = repo.get_commit(pr.head.sha)
             for c in comments:
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
