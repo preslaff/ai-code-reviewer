@@ -2,15 +2,19 @@ import os
 import re
 import argparse
 import sqlite3
+from typing import TypedDict
 from github import Github
+from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
 from langgraph_agent.prompt import SYSTEM_PROMPT, HUMAN_PROMPT
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph_agent.review_utils import parse_feedback_to_comments, store_review_db
-from langchain_core.runnables import RunnableLambda
 
 
+class ReviewState(TypedDict):
+    file: object
+    review: str
 
 def extract_diff_snippet(diff, target_line, context=3):
     lines = diff.splitlines()
@@ -90,7 +94,7 @@ def main():
     def summarize_reviews(state):
         return state["review"]
 
-    builder = StateGraph({"file": None, "review": str})
+    builder = StateGraph(ReviewState)
     builder.add_node("review", RunnableLambda(review_code))
     builder.add_node("comment", RunnableLambda(post_inline_comments))
     builder.add_edge("review", "comment")
