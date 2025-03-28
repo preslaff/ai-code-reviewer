@@ -80,6 +80,7 @@ def main():
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
                 pr.create_review_comment(
+                    commit=commit,
                     body=comment_body,
                     path=file.filename,
                     line=c['line'],
