@@ -14,7 +14,7 @@ from langgraph_agent.review_utils import parse_feedback_to_comments, store_revie
 
 class ReviewState(TypedDict):
     file: object
-    review: str
+    review_text: str
 
 def extract_diff_snippet(diff, target_line, context=3):
     lines = diff.splitlines()
@@ -59,11 +59,11 @@ def main():
             HumanMessage(content=HUMAN_PROMPT.format(file_name=filename, patch=patch)),
         ]
         response = llm.invoke(prompt)
-        return {"file": file, "review": response.content}
+        return {"file": file, "review_text": response.content}
 
     def post_inline_comments(state):
         file = state["file"]
-        review = state["review"]
+        review = state["review_text"]
         comments = parse_feedback_to_comments(review, file)
 
         if args.dry_run:
@@ -91,9 +91,6 @@ def main():
 
         return {}
 
-    def summarize_reviews(state):
-        return state["review"]
-
     builder = StateGraph(ReviewState)
     builder.add_node("review", RunnableLambda(review_code))
     builder.add_node("comment", RunnableLambda(post_inline_comments))
@@ -106,7 +103,7 @@ def main():
     for file in pr.get_files():
         result = app.invoke({"file": file})
         diff_block = extract_diff_snippet(file.patch or "", 0)  # Use 0 to include entire diff context
-        all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{result['review']}\n\n{diff_block}</details>")
+        all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{result['review_text']}\n\n{diff_block}</details>")
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
