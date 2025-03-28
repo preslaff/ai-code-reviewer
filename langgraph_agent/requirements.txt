@@ -4,4 +4,3 @@ langchain-openai
 openai
 PyGithub
 python-dotenv
-langgraph-core
