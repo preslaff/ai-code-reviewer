@@ -29,20 +29,27 @@ class VCSClient:
 # GitHub-specific implementation
 class GitHubClient(VCSClient):
     def __init__(self, token):
-        from github import Github, UnknownObjectException
+        from github import Github, GithubException, UnknownObjectException
         self.client = Github(token)
+        self.GithubException = GithubException
         self.UnknownObjectException = UnknownObjectException
 
     def get_pull_files(self, repo_name, pr_number):
-        repo = self.client.get_repo(repo_name)
-        pr = repo.get_pull(pr_number)
-        self.repo = repo
-        self.pr = pr
-        return pr.get_files()
+        try:
+            repo = self.client.get_repo(repo_name)
+            pr = repo.get_pull(pr_number)
+            self.repo = repo
+            self.pr = pr
+            return pr.get_files()
+        except self.GithubException as e:
+            raise RuntimeError(f"GitHub Error: {e.data.get('message', str(e))}")
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
-        commit = self.repo.get_commit(self.pr.head.sha)
         try:
+            patch_lines = [c.line for c in self.pr.get_files() if c.filename == file_path and c.patch]
+            if line not in patch_lines:
+                return
+            commit = self.repo.get_commit(self.pr.head.sha)
             self.pr.create_review_comment(
                 commit=commit,
                 body=body,
@@ -50,11 +57,14 @@ class GitHubClient(VCSClient):
                 line=line,
                 side="RIGHT"
             )
-        except Exception as e:
-            print(f"⚠️ Skipping inline comment on {file_path}:{line} → {e}")
+        except self.GithubException as e:
+            print(f"⚠️ GitHub Comment Error: {e.data.get('message', str(e))}")
 
     def post_summary(self, repo_name, pr_number, summary):
-        self.pr.create_issue_comment(summary)
+        try:
+            self.pr.create_issue_comment(summary)
+        except self.GithubException as e:
+            print(f"⚠️ GitHub Summary Error: {e.data.get('message', str(e))}")
 
     def get_commit_sha(self, repo_name, pr_number):
         return self.pr.head.sha
@@ -69,36 +79,50 @@ class GitLabClient(VCSClient):
         return {"PRIVATE-TOKEN": self.token}
 
     def get_pull_files(self, repo_name, pr_number):
-        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/changes"
-        response = requests.get(url, headers=self._headers())
-        response.raise_for_status()
-        changes = response.json()
-        self.repo_name = repo_name
-        self.pr_number = pr_number
-        return [type("GitLabFile", (object,), {"filename": c["new_path"], "patch": c["diff"]}) for c in changes["changes"]]
+        try:
+            url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/changes"
+            response = requests.get(url, headers=self._headers())
+            response.raise_for_status()
+            changes = response.json()
+            self.repo_name = repo_name
+            self.pr_number = pr_number
+            return [type("GitLabFile", (object,), {"filename": c["new_path"], "patch": c["diff"]}) for c in changes["changes"]]
+        except requests.RequestException as e:
+            raise RuntimeError(f"GitLab Error (get_pull_files): {e.response.text if e.response else str(e)}")
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
-        note_url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/discussions"
-        data = {
-            "body": body,
-            "position": {
-                "position_type": "text",
-                "new_path": file_path,
-                "new_line": line
+        try:
+            note_url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/discussions"
+            data = {
+                "body": body,
+                "position": {
+                    "position_type": "text",
+                    "new_path": file_path,
+                    "new_line": line
+                }
             }
-        }
-        requests.post(note_url, headers=self._headers(), json=data)
+            response = requests.post(note_url, headers=self._headers(), json=data)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"⚠️ GitLab Comment Error: {e.response.text if e.response else str(e)}")
 
     def post_summary(self, repo_name, pr_number, summary):
-        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
-        data = {"body": summary}
-        requests.post(url, headers=self._headers(), json=data)
+        try:
+            url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
+            data = {"body": summary}
+            response = requests.post(url, headers=self._headers(), json=data)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"⚠️ GitLab Summary Error: {e.response.text if e.response else str(e)}")
 
     def get_commit_sha(self, repo_name, pr_number):
-        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}"
-        response = requests.get(url, headers=self._headers())
-        response.raise_for_status()
-        return response.json()["sha"]
+        try:
+            url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}"
+            response = requests.get(url, headers=self._headers())
+            response.raise_for_status()
+            return response.json()["sha"]
+        except requests.RequestException as e:
+            raise RuntimeError(f"GitLab Error (get_commit_sha): {e.response.text if e.response else str(e)}")
 
 load_dotenv()
 
@@ -177,13 +201,12 @@ def main():
                     print(snippet)
         else:
             for c in comments:
-                # Only allow commenting on lines that exist in the diff
-                if f"+{c['line']}" not in file.patch and f"-{c['line']}" not in file.patch:
-                    print(f"⚠️ Skipping comment on {file.filename}:{c['line']} - not in diff")
-                    continue
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
-                vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
+                try:
+                    vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
+                except Exception as e:
+                    print(f"⚠️ Error posting comment: {e}")
 
             if args.save_db:
                 store_review_db(pr_number, file.filename, comments)
