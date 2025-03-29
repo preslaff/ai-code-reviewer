@@ -33,16 +33,6 @@ def extract_diff_snippet(diff, target_line, context=3):
         return "```diff\n" + "\n".join(snippet) + "\n```"
     return ""
 
-def extract_snippets_from_review(review_text: str, patch: str) -> str:
-    snippets = []
-    line_refs = re.findall(r"[Ll]ine (\d+)", review_text)
-    for ref in set(map(int, line_refs)):
-        snippet = extract_diff_snippet(patch, ref)
-        if snippet:
-            snippets.append(f"Line {ref}:")
-            snippets.append(snippet)
-    return "\n\n".join(snippets)
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
@@ -113,9 +103,7 @@ def main():
     for file in pr.get_files():
         result = app.invoke({"file": file})  # wraps state input
         review_text = result['review_text']
-        extra_snippets = extract_snippets_from_review(review_text, file.patch or "")
-        review_with_code = f"""```markdown\n{review_text}\n```\n\n{extra_snippets}"""
-        all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{review_with_code}\n</details>")
+        all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{review_text}\n\n</details>")
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
