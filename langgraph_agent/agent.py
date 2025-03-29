@@ -85,13 +85,12 @@ class GitHubClient(VCSClient):
 # GitLab-specific implementation
 class GitLabClient(VCSClient):
     """
-    GitLabClient is a GitLab-specific implementation of the VCSClient interface.
-    It interacts with GitLab's REST API to retrieve merge request files,
-    post inline comments, and publish summaries.
+    GitLabClient handles GitLab-specific interactions with merge requests,
+    including fetching changed files, posting inline comments, and summaries.
 
     Attributes:
-        token: The personal access token for GitLab authentication.
-        base_url: The GitLab API base URL (default is GitLab.com).
+        token: Personal Access Token for authentication
+        base_url: Base URL for GitLab API (defaults to public GitLab instance)
     """
     def __init__(self, token, base_url="https://gitlab.com/api/v4"):
         self.token = token
@@ -144,7 +143,6 @@ class ReviewState(TypedDict):
     file: object
     review_text: str
 
-
 def extract_diff_snippet(diff, target_line, context=3):
     lines = diff.splitlines()
     snippet = []
@@ -162,13 +160,13 @@ def extract_diff_snippet(diff, target_line, context=3):
         return "```diff\n" + "\n".join(snippet) + "\n```"
     return ""
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-db", default=True)
     parser.add_argument("--model", default="gpt-4")
     parser.add_argument("--vcs", default="github")
+    parser.add_argument("--skip-inline-comments", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -215,14 +213,14 @@ def main():
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 if snippet:
                     logger.info(snippet)
-        else:
+        elif not args.skip_inline_comments:
             for c in comments:
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
                 vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
 
-            if args.save_db:
-                store_review_db(pr_number, file.filename, comments)
+        if args.save_db:
+            store_review_db(pr_number, file.filename, comments)
 
         return {}
 
