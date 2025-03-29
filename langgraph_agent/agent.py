@@ -51,10 +51,13 @@ class GitHubClient(VCSClient):
                 side="RIGHT"
             )
         except Exception as e:
-            print(f"⚠️ Error posting comment: {e}")
+            print(f"⚠️ Error posting inline comment: {e}")
 
     def post_summary(self, repo_name, pr_number, summary):
-        self.pr.create_issue_comment(summary)
+        try:
+            self.pr.create_issue_comment(summary)
+        except Exception as e:
+            print(f"⚠️ Error posting summary comment: {e}")
 
     def get_commit_sha(self, repo_name, pr_number):
         return self.pr.head.sha
@@ -90,12 +93,15 @@ class GitLabClient(VCSClient):
             }
             requests.post(note_url, headers=self._headers(), json=data)
         except Exception as e:
-            print(f"⚠️ Error posting comment: {e}")
+            print(f"⚠️ Error posting inline comment: {e}")
 
     def post_summary(self, repo_name, pr_number, summary):
-        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
-        data = {"body": summary}
-        requests.post(url, headers=self._headers(), json=data)
+        try:
+            url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
+            data = {"body": summary}
+            requests.post(url, headers=self._headers(), json=data)
+        except Exception as e:
+            print(f"⚠️ Error posting summary comment: {e}")
 
     def get_commit_sha(self, repo_name, pr_number):
         url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}"
