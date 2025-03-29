@@ -2,6 +2,7 @@ import os
 import re
 import argparse
 import sqlite3
+import logging
 from typing import TypedDict
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph
@@ -12,22 +13,41 @@ from langgraph_agent.review_utils import parse_feedback_to_comments, store_revie
 from dotenv import load_dotenv
 import requests
 
+# Setup logging with environment variable support
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
+logger = logging.getLogger(__name__)
+
 # Abstract base VCS client
 class VCSClient:
     def get_pull_files(self, repo_name, pr_number):
+        """Retrieve files from the pull request"""
         raise NotImplementedError
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
+        """Post an inline comment to the pull/merge request"""
         raise NotImplementedError
 
     def post_summary(self, repo_name, pr_number, summary):
+        """Post a summary comment to the pull/merge request"""
         raise NotImplementedError
 
     def get_commit_sha(self, repo_name, pr_number):
+        """Fetch the latest commit SHA for the pull/merge request"""
         raise NotImplementedError
 
 # GitHub-specific implementation
 class GitHubClient(VCSClient):
+    """
+    GitHubClient is a GitHub-specific implementation of the VCSClient interface.
+    It handles retrieving pull request files, posting inline review comments,
+    and posting summary comments directly to a GitHub pull request using PyGithub.
+
+    Attributes:
+        client: The authenticated GitHub client instance
+        pr: The current pull request object
+        repo: The repository associated with the pull request
+    """
     def __init__(self, token):
         from github import Github, UnknownObjectException
         self.client = Github(token)
@@ -51,19 +71,28 @@ class GitHubClient(VCSClient):
                 side="RIGHT"
             )
         except Exception as e:
-            print(f"⚠️ Error posting inline comment: {e}")
+            logger.warning(f"⚠️ Error posting inline comment: {e}")
 
     def post_summary(self, repo_name, pr_number, summary):
         try:
             self.pr.create_issue_comment(summary)
         except Exception as e:
-            print(f"⚠️ Error posting summary comment: {e}")
+            logger.warning(f"⚠️ Error posting summary comment: {e}")
 
     def get_commit_sha(self, repo_name, pr_number):
         return self.pr.head.sha
 
 # GitLab-specific implementation
 class GitLabClient(VCSClient):
+    """
+    GitLabClient is a GitLab-specific implementation of the VCSClient interface.
+    It interacts with GitLab's REST API to retrieve merge request files,
+    post inline comments, and publish summaries.
+
+    Attributes:
+        token: The personal access token for GitLab authentication.
+        base_url: The GitLab API base URL (default is GitLab.com).
+    """
     def __init__(self, token, base_url="https://gitlab.com/api/v4"):
         self.token = token
         self.base_url = base_url
@@ -93,7 +122,7 @@ class GitLabClient(VCSClient):
             }
             requests.post(note_url, headers=self._headers(), json=data)
         except Exception as e:
-            print(f"⚠️ Error posting inline comment: {e}")
+            logger.warning(f"⚠️ Error posting inline comment: {e}")
 
     def post_summary(self, repo_name, pr_number, summary):
         try:
@@ -101,7 +130,7 @@ class GitLabClient(VCSClient):
             data = {"body": summary}
             requests.post(url, headers=self._headers(), json=data)
         except Exception as e:
-            print(f"⚠️ Error posting summary comment: {e}")
+            logger.warning(f"⚠️ Error posting summary comment: {e}")
 
     def get_commit_sha(self, repo_name, pr_number):
         url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}"
@@ -114,6 +143,7 @@ load_dotenv()
 class ReviewState(TypedDict):
     file: object
     review_text: str
+
 
 def extract_diff_snippet(diff, target_line, context=3):
     lines = diff.splitlines()
@@ -131,6 +161,7 @@ def extract_diff_snippet(diff, target_line, context=3):
     if found:
         return "```diff\n" + "\n".join(snippet) + "\n```"
     return ""
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -158,7 +189,7 @@ def main():
         llm = ChatOpenAI(model=args.model)
 
     except Exception as e:
-        print(f"❌ Initialization Error: {e}")
+        logger.error(f"❌ Initialization Error: {e}")
         return
 
     def review_code(state):
@@ -178,12 +209,12 @@ def main():
         comments = parse_feedback_to_comments(review, file)
 
         if args.dry_run:
-            print(f"\n📄 Review for {file.filename}:")
+            logger.info(f"\n📄 Review for {file.filename}:")
             for c in comments:
-                print(f"  Line {c['line']}: {c['body']}")
+                logger.info(f"  Line {c['line']}: {c['body']}")
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 if snippet:
-                    print(snippet)
+                    logger.info(snippet)
         else:
             for c in comments:
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
@@ -211,8 +242,8 @@ def main():
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
-        formatted_summary = f"## 🤖 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
+        formatted_summary = f"## 🧠 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
         vcs_client.post_summary(repo_name, pr_number, formatted_summary)
 
-        print("\n--- AI Review Summary ---\n")
-        print(formatted_summary)
+        logger.info("\n--- AI Review Summary ---\n")
+        logger.info(formatted_summary)
