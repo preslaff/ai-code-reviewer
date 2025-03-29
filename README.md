@@ -2,7 +2,7 @@
 
 # 🤖 AI Code Reviewer
 
-A complete AI-powered GitHub pull request reviewer using LangGraph and OpenAI.
+A complete AI-powered pull request reviewer using LangGraph and OpenAI. Works with both GitHub and GitLab!
 
 ---
 
@@ -10,10 +10,10 @@ A complete AI-powered GitHub pull request reviewer using LangGraph and OpenAI.
 
 - ✅ Automatically reviews PRs using GPT-4
 - ✅ Flags bugs, performance issues, security risks, readability problems
-- ✅ Posts a detailed AI summary comment in PR
-- ✅ Run locally, with GitHub Actions, or in Docker
-- ✅ Optional Flask dashboard to review AI comments
-- ✅ Supports `.env`, CLI flags, dry run, model override
+- ✅ Posts inline comments + detailed summary in PR
+- ✅ Works with **GitHub Actions** and **GitLab CI**
+- ✅ Local CLI support with `.env`, flags, dry-run mode
+- ✅ Optional Flask dashboard for review history
 
 ---
 
@@ -21,23 +21,23 @@ A complete AI-powered GitHub pull request reviewer using LangGraph and OpenAI.
 ```text
 ai-code-reviewer/
 ├── .github/workflows/
-│   └── ai_review.yml           # GitHub Action trigger on PRs
+│   └── ai_review.yml           # GitHub Action trigger
 ├── langgraph_agent/
-│   ├── agent.py                # Main entrypoint for the AI reviewer
-│   ├── prompt.py               # Prompt used for LLM code review
-│   ├── review_utils.py         # Feedback parsing + DB save logic
+│   ├── agent.py                # Main AI logic + CLI
+│   ├── prompt.py               # System & human prompts
+│   ├── review_utils.py         # Diff parsing + DB save
 │   └── requirements.txt
 ├── web_dashboard/
-│   ├── app.py                  # Flask-based dashboard
+│   ├── app.py                  # Flask dashboard
 │   ├── templates/
-│   │   └── index.html
 │   ├── static/
-│   │   └── style.css
-│   ├── reviews.db              # Review database (SQLite)
+│   ├── reviews.db              # SQLite DB
 │   └── requirements.txt
+├── .gitlab-ci.yml              # GitLab MR trigger (CI)
 ├── Dockerfile
 ├── Makefile
-├── .env                        # Environment variables (not committed)
+├── .env                        # Local config (not committed)
+├── .env.example                # Example env file
 └── README.md
 ```
 
@@ -52,7 +52,6 @@ cd ai-code-reviewer
 ```
 
 ### 2. Create `.env`
-Create a `.env` file in the root directory with:
 ```env
 OPENAI_API_KEY=your_openai_key
 GITHUB_TOKEN=your_token
@@ -60,89 +59,120 @@ GITHUB_REPOSITORY=owner/repo_name
 PR_NUMBER=123
 ```
 
-### 3. Set Up Python (Windows/Linux/macOS)
-Ensure you have **Python 3.10+** and **pip** installed.
-
-#### Option A: Using `make` (Linux/macOS/Windows with Git Bash or WSL)
+Or just copy the template:
 ```bash
-make install
+cp .env.example .env
 ```
 
-#### Option B: Manual Setup (Windows CMD/PowerShell)
-```cmd
-python -m venv venv
-venv\Scripts\activate
+### 3. Install Locally
+```bash
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -e .
 ```
-> On Linux/macOS: use `source venv/bin/activate`
 
-### 4. Start the Flask Dashboard (Python CLI)
+### 4. Start Flask Dashboard
 ```bash
 cd web_dashboard
 python app.py
 ```
-Then open: [http://localhost:5000](http://localhost:5000)
+Then visit [http://localhost:5000](http://localhost:5000)
 
 ---
 
 ## 🚀 Usage
 
-### 🔍 Run a Review
+### 🔍 Review a PR Locally
 ```bash
-make run                            # Uses .env PR_NUMBER and GITHUB_REPOSITORY
-ai-review --pr 42                   # Specify PR
-ai-review --pr 42 --repo owner/repo # Override repository
+ai-review --repo owner/repo --pr 42
+```
+Or use values from `.env`:
+```bash
+make run
 ```
 
-### 🧪 Test in Dry Run Mode
+### 🧪 Test in Dry Run
 ```bash
 ai-review --pr 42 --dry-run
 ```
 
-### 🧠 Use a Different Model
+### 🤖 Choose Model
 ```bash
 ai-review --pr 42 --model gpt-3.5-turbo
 ```
 
-### 🚫 Skip Database Storage
+### 💾 Disable DB Logging
 ```bash
 ai-review --pr 42 --save-db false
 ```
 
+### 🔄 Switch Between GitHub / GitLab
+```bash
+ai-review --vcs github   # default
+ai-review --vcs gitlab
+```
+
+> Auto-detection coming soon!
+
 ---
 
-## 🐳 Run in Docker
+## 🐳 Docker
 
-### Build the Container
+### Build
 ```bash
 make docker-build
 ```
 
-### Run it with `.env`
+### Run
 ```bash
 make docker-run
 ```
 
 ---
 
-## 📊 Dashboard
+## ⚙️ GitHub Actions
+Already configured in `.github/workflows/ai_review.yml`
+Triggered on PR open/update.
 
-Start the dashboard:
-```bash
-make dashboard
+Make sure to add:
+- `OPENAI_API_KEY` (secret)
+- `GITHUB_TOKEN` (default provided)
+
+---
+
+## 🦊 GitLab CI Support
+
+Create a `.gitlab-ci.yml` like this:
+```yaml
+stages:
+  - review
+
+ai_code_review:
+  stage: review
+  image: python:3.10
+  before_script:
+    - python -m venv venv
+    - . venv/bin/activate
+    - pip install -r langgraph_agent/requirements.txt
+    - pip install .
+  script:
+    - ai-review --vcs gitlab
+  only:
+    - merge_requests
+  variables:
+    GITHUB_REPOSITORY: $CI_PROJECT_PATH
+    PR_NUMBER: $CI_MERGE_REQUEST_IID
+    GITHUB_TOKEN: $GITLAB_TOKEN
+    OPENAI_API_KEY: $OPENAI_API_KEY
 ```
-Or manually:
-```bash
-cd web_dashboard
-python app.py
-```
-Then open: [http://localhost:5000](http://localhost:5000)
+
+> Add `GITLAB_TOKEN` and `OPENAI_API_KEY` under GitLab → Settings → CI/CD → Variables
 
 ---
 
 ## 🔐 Environment Variables
 
-You can use `.env` or CLI arguments. Required variables:
+You can use `.env` or pass via CLI:
 ```env
 OPENAI_API_KEY=...
 GITHUB_TOKEN=...
@@ -150,17 +180,19 @@ GITHUB_REPOSITORY=owner/repo
 PR_NUMBER=123
 ```
 
-Use CLI overrides:
+---
+
+## 📊 Dashboard
 ```bash
-ai-review --repo owner/repo --pr 42
+make dashboard
+# or
+cd web_dashboard && python app.py
 ```
 
 ---
 
 ## 🙌 Contributing & License
 
-Want to contribute? PRs welcome! Add your own agents, review types, or UI upgrades.
+Want to contribute? PRs welcome — add new agents, review types, dashboards, or Git provider integrations.
 
-> MIT License • Made with ❤️ for dev productivity.
-
----
+> MIT License • Made with ❤️ for dev productivity

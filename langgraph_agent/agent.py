@@ -3,7 +3,6 @@ import re
 import argparse
 import sqlite3
 from typing import TypedDict
-from github import Github, GithubException, UnknownObjectException
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
@@ -11,6 +10,92 @@ from langgraph_agent.prompt import SYSTEM_PROMPT, HUMAN_PROMPT
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph_agent.review_utils import parse_feedback_to_comments, store_review_db
 from dotenv import load_dotenv
+import requests
+
+# Abstract base VCS client
+class VCSClient:
+    def get_pull_files(self, repo_name, pr_number):
+        raise NotImplementedError
+
+    def post_comment(self, repo_name, pr_number, file_path, line, body):
+        raise NotImplementedError
+
+    def post_summary(self, repo_name, pr_number, summary):
+        raise NotImplementedError
+
+    def get_commit_sha(self, repo_name, pr_number):
+        raise NotImplementedError
+
+# GitHub-specific implementation
+class GitHubClient(VCSClient):
+    def __init__(self, token):
+        from github import Github, UnknownObjectException
+        self.client = Github(token)
+        self.UnknownObjectException = UnknownObjectException
+
+    def get_pull_files(self, repo_name, pr_number):
+        repo = self.client.get_repo(repo_name)
+        pr = repo.get_pull(pr_number)
+        self.repo = repo
+        self.pr = pr
+        return pr.get_files()
+
+    def post_comment(self, repo_name, pr_number, file_path, line, body):
+        commit = self.repo.get_commit(self.pr.head.sha)
+        self.pr.create_review_comment(
+            commit=commit,
+            body=body,
+            path=file_path,
+            line=line,
+            side="RIGHT"
+        )
+
+    def post_summary(self, repo_name, pr_number, summary):
+        self.pr.create_issue_comment(summary)
+
+    def get_commit_sha(self, repo_name, pr_number):
+        return self.pr.head.sha
+
+# GitLab-specific implementation
+class GitLabClient(VCSClient):
+    def __init__(self, token, base_url="https://gitlab.com/api/v4"):
+        self.token = token
+        self.base_url = base_url
+
+    def _headers(self):
+        return {"PRIVATE-TOKEN": self.token}
+
+    def get_pull_files(self, repo_name, pr_number):
+        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/changes"
+        response = requests.get(url, headers=self._headers())
+        response.raise_for_status()
+        changes = response.json()
+        self.repo_name = repo_name
+        self.pr_number = pr_number
+        return [type("GitLabFile", (object,), {"filename": c["new_path"], "patch": c["diff"]}) for c in changes["changes"]]
+
+    def post_comment(self, repo_name, pr_number, file_path, line, body):
+        note_url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/discussions"
+        data = {
+            "body": body,
+            "position": {
+                "position_type": "text",
+                "new_path": file_path,
+                "new_line": line
+            }
+        }
+        requests.post(note_url, headers=self._headers(), json=data)
+
+    def post_summary(self, repo_name, pr_number, summary):
+        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
+        data = {"body": summary}
+        requests.post(url, headers=self._headers(), json=data)
+
+    def get_commit_sha(self, repo_name, pr_number):
+        url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}"
+        response = requests.get(url, headers=self._headers())
+        response.raise_for_status()
+        return response.json()["sha"]
 
 load_dotenv()
 
@@ -40,6 +125,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-db", default=True)
     parser.add_argument("--model", default="gpt-4")
+    parser.add_argument("--vcs", default="github")
     args = parser.parse_args()
 
     try:
@@ -49,21 +135,15 @@ def main():
         if not repo_name or not token:
             raise ValueError("Missing required environment variables: GITHUB_REPOSITORY or GITHUB_TOKEN")
 
-        g = Github(token)
-        try:
-            repo = g.get_repo(repo_name)
-        except UnknownObjectException:
-            raise ValueError(f"Repository '{repo_name}' not found. Check GITHUB_REPOSITORY variable.")
+        if args.vcs == "github":
+            vcs_client = GitHubClient(token)
+        elif args.vcs == "gitlab":
+            vcs_client = GitLabClient(token)
+        else:
+            raise ValueError("Unsupported VCS platform")
 
-        try:
-            pr = repo.get_pull(pr_number)
-        except UnknownObjectException:
-            raise ValueError(f"Pull request #{pr_number} not found in repo '{repo_name}'.")
-
-        try:
-            llm = ChatOpenAI(model=args.model)
-        except Exception as e:
-            raise ValueError(f"Failed to initialize OpenAI model: {e}")
+        files = vcs_client.get_pull_files(repo_name, pr_number)
+        llm = ChatOpenAI(model=args.model)
 
     except Exception as e:
         print(f"❌ Initialization Error: {e}")
@@ -93,17 +173,10 @@ def main():
                 if snippet:
                     print(snippet)
         else:
-            commit = repo.get_commit(pr.head.sha)
             for c in comments:
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
-                pr.create_review_comment(
-                    commit=commit,
-                    body=comment_body,
-                    path=file.filename,
-                    line=c['line'],
-                    side="RIGHT"
-                )
+                vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
 
             if args.save_db:
                 store_review_db(pr_number, file.filename, comments)
@@ -111,7 +184,7 @@ def main():
         return {}
 
     builder = StateGraph(ReviewState)
-    builder.add_node("review", RunnableLambda(review_code))  # expects full state
+    builder.add_node("review", RunnableLambda(review_code))
     builder.add_node("comment", RunnableLambda(post_inline_comments))
     builder.add_edge("review", "comment")
     builder.set_entry_point("review")
@@ -119,15 +192,15 @@ def main():
     app = builder.compile()
 
     all_summaries = []
-    for file in pr.get_files():
-        result = app.invoke({"file": file})  # wraps state input
+    for file in files:
+        result = app.invoke({"file": file})
         review_text = result['review_text']
         all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{review_text}\n\n</details>")
 
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
         formatted_summary = f"## 🤖 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
-        pr.create_issue_comment(formatted_summary)
+        vcs_client.post_summary(repo_name, pr_number, formatted_summary)
 
         print("\n--- AI Review Summary ---\n")
         print(formatted_summary)
