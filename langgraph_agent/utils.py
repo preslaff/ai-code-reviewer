@@ -1,29 +1,37 @@
 # -------------------------------------------
 # File: ai_code_reviewer/utils.py
 # -------------------------------------------
+import re
 import sqlite3
 
 def parse_feedback_to_comments(review, file):
     comments = []
-    for line in review.split('\n'):
-        if "Line" in line:
-            try:
-                line_num = int(line.split("Line")[1].split(":")[0].strip())
-                comment_body = line.split(":", 1)[1].strip()
-                comments.append({"line": line_num, "body": comment_body})
-            except:
-                continue
+
+    # Match multiple formats: "Line 12: ...", "On line 12 ...", etc.
+    line_matches = re.findall(r"(?:Line|line|On line) (\d+)[^\n]*?:?\s*(.*?)(?=\n|$)", review)
+
+    if line_matches:
+        for line, body in line_matches:
+            comments.append({"line": int(line), "body": body.strip()})
     return comments
 
-def store_review_db(pr, filename, comments):
-    conn = sqlite3.connect('web_dashboard/reviews.db')
+def store_review_db(pr_number, filename, comments):
+    conn = sqlite3.connect("web_dashboard/reviews.db")
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS reviews (
-            pr INT, file TEXT, line INT, comment TEXT
+            pr INTEGER,
+            file TEXT,
+            line INTEGER,
+            body TEXT
         )
-    """)
+        """
+    )
     for c in comments:
-        cursor.execute("INSERT INTO reviews VALUES (?, ?, ?, ?)", (pr, filename, c["line"], c["body"]))
+        cursor.execute(
+            "INSERT INTO reviews (pr, file, line, body) VALUES (?, ?, ?, ?)",
+            (pr_number, filename, c["line"], c["body"]),
+        )
     conn.commit()
     conn.close()

@@ -3,14 +3,16 @@ import re
 import argparse
 import sqlite3
 from typing import TypedDict
-from github import Github
+from github import Github, GithubException, UnknownObjectException
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
 from langgraph_agent.prompt import SYSTEM_PROMPT, HUMAN_PROMPT
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph_agent.review_utils import parse_feedback_to_comments, store_review_db
+from dotenv import load_dotenv
 
+load_dotenv()
 
 class ReviewState(TypedDict):
     file: object
@@ -40,15 +42,32 @@ def main():
     parser.add_argument("--model", default="gpt-4")
     args = parser.parse_args()
 
-    repo_name = os.getenv("GITHUB_REPOSITORY")
-    pr_number = int(os.getenv("PR_NUMBER"))
-    token = os.getenv("GITHUB_TOKEN")
+    try:
+        repo_name = os.getenv("GITHUB_REPOSITORY")
+        pr_number = int(os.getenv("PR_NUMBER"))
+        token = os.getenv("GITHUB_TOKEN")
+        if not repo_name or not token:
+            raise ValueError("Missing required environment variables: GITHUB_REPOSITORY or GITHUB_TOKEN")
 
-    g = Github(token)
-    repo = g.get_repo(repo_name)
-    pr = repo.get_pull(pr_number)
+        g = Github(token)
+        try:
+            repo = g.get_repo(repo_name)
+        except UnknownObjectException:
+            raise ValueError(f"Repository '{repo_name}' not found. Check GITHUB_REPOSITORY variable.")
 
-    llm = ChatOpenAI(model=args.model)
+        try:
+            pr = repo.get_pull(pr_number)
+        except UnknownObjectException:
+            raise ValueError(f"Pull request #{pr_number} not found in repo '{repo_name}'.")
+
+        try:
+            llm = ChatOpenAI(model=args.model)
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI model: {e}")
+
+    except Exception as e:
+        print(f"❌ Initialization Error: {e}")
+        return
 
     def review_code(state):
         file = state["file"]
