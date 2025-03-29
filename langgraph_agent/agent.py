@@ -42,13 +42,16 @@ class GitHubClient(VCSClient):
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
         commit = self.repo.get_commit(self.pr.head.sha)
-        self.pr.create_review_comment(
-            commit=commit,
-            body=body,
-            path=file_path,
-            line=line,
-            side="RIGHT"
-        )
+        try:
+            self.pr.create_review_comment(
+                commit=commit,
+                body=body,
+                path=file_path,
+                line=line,
+                side="RIGHT"
+            )
+        except Exception as e:
+            print(f"⚠️ Skipping inline comment on {file_path}:{line} → {e}")
 
     def post_summary(self, repo_name, pr_number, summary):
         self.pr.create_issue_comment(summary)
@@ -174,6 +177,10 @@ def main():
                     print(snippet)
         else:
             for c in comments:
+                # Only allow commenting on lines that exist in the diff
+                if f"+{c['line']}" not in file.patch and f"-{c['line']}" not in file.patch:
+                    print(f"⚠️ Skipping comment on {file.filename}:{c['line']} - not in diff")
+                    continue
                 snippet = extract_diff_snippet(file.patch or "", c['line'])
                 comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
                 vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
