@@ -161,6 +161,7 @@ def extract_diff_snippet(diff, target_line, context=3):
     return ""
 
 def main():
+    # --- Argument Parsing ---
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-db", default=True)
@@ -169,6 +170,7 @@ def main():
     parser.add_argument("--skip-inline-comments", action="store_true")
     args = parser.parse_args()
 
+    # --- Initialization ---
     try:
         repo_name = os.getenv("GITHUB_REPOSITORY")
         pr_number = int(os.getenv("PR_NUMBER"))
@@ -190,6 +192,7 @@ def main():
         logger.error(f"❌ Initialization Error: {e}")
         return
 
+    # --- Code Review Step ---
     def review_code(state):
         file = state["file"]
         patch = file.patch or ""
@@ -201,6 +204,7 @@ def main():
         response = llm.invoke(prompt)
         return {"file": file, "review_text": response.content}
 
+    # --- Inline Comment Posting Step ---
     def post_inline_comments(state):
         file = state["file"]
         review = state["review_text"]
@@ -224,20 +228,22 @@ def main():
 
         return {}
 
+    # --- Graph Construction ---
     builder = StateGraph(ReviewState)
     builder.add_node("review", RunnableLambda(review_code))
     builder.add_node("comment", RunnableLambda(post_inline_comments))
     builder.add_edge("review", "comment")
     builder.set_entry_point("review")
-
     app = builder.compile()
 
+    # --- Execute Review for All Files ---
     all_summaries = []
     for file in files:
         result = app.invoke({"file": file})
         review_text = result['review_text']
         all_summaries.append(f"<details><summary>📄 {file.filename}</summary>\n\n{review_text}\n\n</details>")
 
+    # --- Post Summary Comment ---
     if all_summaries and not args.dry_run:
         summary_text = "\n\n".join(all_summaries)
         formatted_summary = f"## 🧠 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
