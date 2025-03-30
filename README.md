@@ -53,13 +53,17 @@ cd ai-code-reviewer
 
 ### 2. Create `.env`
 ```env
+# Required
 OPENAI_API_KEY=your_openai_key
-GITHUB_TOKEN=your_token
-GITHUB_REPOSITORY=owner/repo_name
+REPO_TOKEN=your_github_or_gitlab_token
+REPOSITORY_ID=owner/repo_name_or_gitlab_project_id
 PR_NUMBER=123
+
+# Optional
+VCS=github   # or "gitlab"
 ```
 
-Or just copy the template:
+Or copy the template:
 ```bash
 cp .env.example .env
 ```
@@ -101,7 +105,7 @@ ai-review --pr 42 --dry-run
 ai-review --pr 42 --model gpt-3.5-turbo
 ```
 
-### 💾 Disable DB Logging
+### 📂 Disable DB Logging
 ```bash
 ai-review --pr 42 --save-db false
 ```
@@ -136,18 +140,18 @@ Triggered on PR open/update.
 
 Make sure to add:
 - `OPENAI_API_KEY` (secret)
-- `GITHUB_TOKEN` (default provided)
+- `REPO_TOKEN` (usually the default GitHub token)
 
 ---
 
-## 🦊 GitLab CI Support
+## 🧺 GitLab CI Support
 
 Create a `.gitlab-ci.yml` like this:
 ```yaml
 stages:
   - review
 
-ai_code_review:
+aicode_review:
   stage: review
   image: python:3.10
   before_script:
@@ -160,9 +164,9 @@ ai_code_review:
   only:
     - merge_requests
   variables:
-    GITHUB_REPOSITORY: $CI_PROJECT_PATH
+    REPO_TOKEN: $GITLAB_TOKEN
+    REPOSITORY_ID: $CI_PROJECT_ID
     PR_NUMBER: $CI_MERGE_REQUEST_IID
-    GITHUB_TOKEN: $GITLAB_TOKEN
     OPENAI_API_KEY: $OPENAI_API_KEY
 ```
 
@@ -172,12 +176,13 @@ ai_code_review:
 
 ## 🔐 Environment Variables
 
-You can use `.env` or pass via CLI:
+Minimal setup in `.env` or GitHub/GitLab CI:
 ```env
 OPENAI_API_KEY=...
-GITHUB_TOKEN=...
-GITHUB_REPOSITORY=owner/repo
+REPO_TOKEN=...
+REPOSITORY_ID=owner/repo_or_project_id
 PR_NUMBER=123
+VCS=github  # or gitlab
 ```
 
 ---
@@ -196,3 +201,4 @@ cd web_dashboard && python app.py
 Want to contribute? PRs welcome — add new agents, review types, dashboards, or Git provider integrations.
 
 > MIT License • Made with ❤️ for dev productivity
+

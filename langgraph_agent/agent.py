@@ -20,33 +20,26 @@ logger = logging.getLogger(__name__)
 
 # Abstract base VCS client
 class VCSClient:
+    """
+    Interface for version control system (VCS) clients like GitHub and GitLab.
+    Each method must be implemented by platform-specific subclasses.
+    """
     def get_pull_files(self, repo_name, pr_number):
-        """Retrieve files from the pull request"""
         raise NotImplementedError
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
-        """Post an inline comment to the pull/merge request"""
         raise NotImplementedError
 
     def post_summary(self, repo_name, pr_number, summary):
-        """Post a summary comment to the pull/merge request"""
         raise NotImplementedError
 
     def get_commit_sha(self, repo_name, pr_number):
-        """Fetch the latest commit SHA for the pull/merge request"""
         raise NotImplementedError
 
 # GitHub-specific implementation
 class GitHubClient(VCSClient):
     """
-    GitHubClient is a GitHub-specific implementation of the VCSClient interface.
-    It handles retrieving pull request files, posting inline review comments,
-    and posting summary comments directly to a GitHub pull request using PyGithub.
-
-    Attributes:
-        client: The authenticated GitHub client instance
-        pr: The current pull request object
-        repo: The repository associated with the pull request
+    GitHub VCS client that interacts with pull requests using the PyGithub library.
     """
     def __init__(self, token):
         from github import Github, UnknownObjectException
@@ -85,12 +78,8 @@ class GitHubClient(VCSClient):
 # GitLab-specific implementation
 class GitLabClient(VCSClient):
     """
-    GitLabClient handles GitLab-specific interactions with merge requests,
-    including fetching changed files, posting inline comments, and summaries.
-
-    Attributes:
-        token: Personal Access Token for authentication
-        base_url: Base URL for GitLab API (defaults to public GitLab instance)
+    GitLab VCS client that interacts with merge requests via the GitLab REST API v4.
+    Uses HTTP requests directly with appropriate authentication headers.
     """
     def __init__(self, token, base_url="https://gitlab.com/api/v4"):
         self.token = token
@@ -119,7 +108,8 @@ class GitLabClient(VCSClient):
                     "new_line": line
                 }
             }
-            requests.post(note_url, headers=self._headers(), json=data)
+            response = requests.post(note_url, headers=self._headers(), json=data)
+            response.raise_for_status()
         except Exception as e:
             logger.warning(f"⚠️ Error posting inline comment: {e}")
 
@@ -127,7 +117,8 @@ class GitLabClient(VCSClient):
         try:
             url = f"{self.base_url}/projects/{requests.utils.quote(repo_name, safe='')}/merge_requests/{pr_number}/notes"
             data = {"body": summary}
-            requests.post(url, headers=self._headers(), json=data)
+            response = requests.post(url, headers=self._headers(), json=data)
+            response.raise_for_status()
         except Exception as e:
             logger.warning(f"⚠️ Error posting summary comment: {e}")
 
@@ -144,6 +135,9 @@ class ReviewState(TypedDict):
     review_text: str
 
 def extract_diff_snippet(diff, target_line, context=3):
+    """
+    Extracts a context-specific snippet of a unified diff around a target line.
+    """
     lines = diff.splitlines()
     snippet = []
     found = False
@@ -161,26 +155,28 @@ def extract_diff_snippet(diff, target_line, context=3):
     return ""
 
 def main():
+    # Argument parsing from CLI
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="Run without posting comments")
-    parser.add_argument("--save-db", default=True, help="Save results to SQLite DB")
-    parser.add_argument("--model", default="gpt-4", help="Model to use (e.g. gpt-4)")
-    parser.add_argument("--vcs", default="github", help="Version control system: github or gitlab")
-    parser.add_argument("--skip-inline-comments", action="store_true", help="Skip inline comments")
-    parser.add_argument("--repo", type=str, help="Override repo name (e.g. username/repo)")
-    parser.add_argument("--pr", type=int, help="Override PR or MR number")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--save-db", default=True)
+    parser.add_argument("--model", default="gpt-4")
+    parser.add_argument("--vcs", default="github")
+    parser.add_argument("--skip-inline-comments", action="store_true")
+    parser.add_argument("--repo")
+    parser.add_argument("--token")
+    parser.add_argument("--pr")
     args = parser.parse_args()
 
     try:
-        repo_name = args.repo or os.getenv("GITHUB_REPOSITORY")
-        pr_number = args.pr or os.getenv("PR_NUMBER")
-        token = os.getenv("GITHUB_TOKEN") or os.getenv("GITLAB_TOKEN")
+        # Initialization & validation
+        repo_name = args.repo or os.getenv("REPOSITORY_ID")
+        pr_number = int(args.pr or os.getenv("PR_NUMBER"))
+        token = args.token or os.getenv("REPO_TOKEN")
 
-        if not repo_name or not pr_number or not token:
-            raise ValueError("Missing repo, PR number, or token. Use --repo and --pr or set env vars.")
+        if not repo_name or not token:
+            raise ValueError("Missing required repo or token.")
 
-        pr_number = int(pr_number)  # ensure it's int
-
+        # Initialize VCS-specific client
         if args.vcs == "github":
             vcs_client = GitHubClient(token)
         elif args.vcs == "gitlab":
@@ -188,6 +184,7 @@ def main():
         else:
             raise ValueError("Unsupported VCS platform")
 
+        # Retrieve files & initialize LLM
         files = vcs_client.get_pull_files(repo_name, pr_number)
         llm = ChatOpenAI(model=args.model)
 
@@ -229,12 +226,12 @@ def main():
 
         return {}
 
+    # Build LangGraph workflow
     builder = StateGraph(ReviewState)
     builder.add_node("review", RunnableLambda(review_code))
     builder.add_node("comment", RunnableLambda(post_inline_comments))
     builder.add_edge("review", "comment")
     builder.set_entry_point("review")
-
     app = builder.compile()
 
     all_summaries = []
@@ -247,6 +244,5 @@ def main():
         summary_text = "\n\n".join(all_summaries)
         formatted_summary = f"## 🧠 AI Review Summary for PR #{pr_number}\n\n{summary_text}"
         vcs_client.post_summary(repo_name, pr_number, formatted_summary)
-
         logger.info("\n--- AI Review Summary ---\n")
         logger.info(formatted_summary)
