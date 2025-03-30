@@ -71,16 +71,28 @@ class GitHubClient(VCSClient):
         commit = self.pr.head.sha
         all_comments = []
 
+        try:
+            existing_comments = list(self.pr.get_review_comments())
+            existing_set = {
+                (c.path, c.position, c.body.strip())
+                for c in existing_comments
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to fetch existing review comments: {e}")
+            existing_set = set()
+
         for comment in comments:
             try:
                 patch_lines = self._get_diff_lines(comment['patch'])
                 position = patch_lines.get(comment['line'])
                 if position:
-                    all_comments.append({
-                        "path": comment["file"],
-                        "position": position,
-                        "body": comment["body"]
-                    })
+                    key = (comment["file"], position, comment["body"].strip())
+                    if key not in existing_set:
+                        all_comments.append({
+                            "path": comment["file"],
+                            "position": position,
+                            "body": comment["body"]
+                        })
             except Exception as e:
                 logger.warning(f"⚠️ Failed to prepare inline comment: {e}")
 
@@ -88,7 +100,7 @@ class GitHubClient(VCSClient):
             try:
                 self.pr.create_review(
                     commit=commit,
-                    body="💬 AI inline review suggestions",
+                    body="",  # No review header text
                     event="COMMENT",
                     comments=all_comments
                 )
