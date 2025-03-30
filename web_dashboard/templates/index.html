@@ -5,21 +5,72 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <h1>AI Code Review Dashboard</h1>
-  <table>
-    <thead>
-      <tr><th>PR</th><th>File</th><th>Line</th><th>Comment</th></tr>
-    </thead>
-    <tbody>
-      {% for pr, file, line, comment in reviews %}
-      <tr>
-        <td>{{ pr }}</td>
-        <td>{{ file }}</td>
-        <td>{{ line }}</td>
-        <td>{{ comment }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <header>
+  <h1>🤖 AI Code Review Dashboard</h1>
+  <div class="toggle-container">
+    <label class="switch">
+      <input type="checkbox" id="darkModeToggle">
+      <span class="slider round"></span>
+    </label>
+    <span class="toggle-label">🌙 Dark Mode</span>
+  </div>
+</header>
+
+
+  <main>
+    <form method="get" class="filters">
+      <label for="pr">PR Number:</label>
+      <select name="pr" id="pr">
+        <option value="">All</option>
+        {% for pr in pr_options %}
+          <option value="{{ pr }}" {% if pr|string == pr_filter %}selected{% endif %}>{{ pr }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="file">File:</label>
+      <select name="file" id="file">
+        <option value="">All</option>
+        {% for f in file_options %}
+          <option value="{{ f }}" {% if f == file_filter %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit">🔍 Filter</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr><th>PR</th><th>File</th><th>Line</th><th>Comment</th></tr>
+      </thead>
+      <tbody>
+        {% for pr, file, line, comment in reviews %}
+        <tr>
+          <td>{{ pr }}</td>
+          <td>{{ file }}</td>
+          <td>{{ line }}</td>
+          <td>{{ comment }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+  <script>
+  const toggle = document.getElementById('darkModeToggle');
+  const body = document.body;
+
+  toggle.addEventListener('change', () => {
+    body.classList.toggle('dark');
+    localStorage.setItem('theme', toggle.checked ? 'dark' : 'light');
+  });
+
+  // Persist theme
+  window.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('theme') === 'dark') {
+      body.classList.add('dark');
+      toggle.checked = true;
+    }
+  });
+</script>
+
 </body>
 </html>
