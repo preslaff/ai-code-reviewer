@@ -1,0 +1,20 @@
+stages:
+  - ai_review
+
+ai_code_review:
+  stage: ai_review
+  image: python:3.10
+  before_script:
+    - python -m venv venv
+    - source venv/bin/activate
+    - pip install -r langgraph_agent/requirements.txt
+    - pip install .
+  script:
+    - ai-review --vcs gitlab
+  only:
+    - merge_requests
+  variables:
+    TOKEN: $REPO_TOKEN
+    REPO: $REPOSITORY_ID
+    PR_NUMBER: $CI_MERGE_REQUEST_IID
+    OPENAI_API_KEY: $OPENAI_API_KEY
