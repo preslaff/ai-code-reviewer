@@ -1,7 +1,6 @@
 import os
 import re
 import argparse
-import sqlite3
 import logging
 from typing import TypedDict
 from langchain_core.runnables import RunnableLambda
@@ -12,6 +11,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph_agent.review_utils import parse_feedback_to_comments, store_review_db
 from dotenv import load_dotenv
 import requests
+
+load_dotenv()
 
 # Setup logging with environment variable support
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -54,17 +55,8 @@ class GitHubClient(VCSClient):
         return pr.get_files()
 
     def post_comment(self, repo_name, pr_number, file_path, line, body):
-        try:
-            commit = self.repo.get_commit(self.pr.head.sha)
-            self.pr.create_review_comment(
-                commit=commit,
-                body=body,
-                path=file_path,
-                line=line,
-                side="RIGHT"
-            )
-        except Exception as e:
-            logger.warning(f"⚠️ Error posting inline comment: {e}")
+    # This method is now unused (batched instead). Left for interface compatibility.
+        logger.debug("GitHubClient.post_comment called but handled in batch mode.")
 
     def post_summary(self, repo_name, pr_number, summary):
         try:
@@ -74,6 +66,58 @@ class GitHubClient(VCSClient):
 
     def get_commit_sha(self, repo_name, pr_number):
         return self.pr.head.sha
+        
+    def post_inline_review(self, comments):
+        commit = self.pr.head.sha
+        all_comments = []
+
+        for comment in comments:
+            try:
+                patch_lines = self._get_diff_lines(comment['patch'])
+                position = patch_lines.get(comment['line'])
+                if position:
+                    all_comments.append({
+                        "path": comment["file"],
+                        "position": position,
+                        "body": comment["body"]
+                    })
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to prepare inline comment: {e}")
+
+        if all_comments:
+            try:
+                self.pr.create_review(
+                    commit=commit,
+                    body="💬 AI inline review suggestions",
+                    event="COMMENT",
+                    comments=all_comments
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to post inline review batch: {e}")
+                
+    def _get_diff_lines(self, patch):
+        """
+        Maps original line numbers to diff-relative positions.
+        Needed to convert source line to GitHub 'position'.
+        """
+        lines = patch.splitlines()
+        position = 0
+        mapping = {}
+        old_line = new_line = None
+        for line in lines:
+            position += 1
+            if line.startswith("@@"):
+                # Parse @@ -a,b +c,d @@
+                m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)", line)
+                new_line = int(m.group(1)) if m else 0
+            elif line.startswith("+"):
+                mapping[new_line] = position
+                new_line += 1
+            elif not line.startswith("-"):
+                new_line += 1
+        return mapping
+
+        
 
 # GitLab-specific implementation
 class GitLabClient(VCSClient):
@@ -127,8 +171,6 @@ class GitLabClient(VCSClient):
         response = requests.get(url, headers=self._headers())
         response.raise_for_status()
         return response.json()["sha"]
-
-load_dotenv()
 
 class ReviewState(TypedDict):
     file: object
@@ -192,7 +234,10 @@ def main():
         logger.error(f"❌ Initialization Error: {e}")
         return
 
-    def review_code(state):
+    def review_code(state: ReviewState) -> ReviewState:
+        """
+        Sends a diff to the LLM and returns the review response.
+        """
         file = state["file"]
         patch = file.patch or ""
         filename = file.filename
@@ -203,7 +248,10 @@ def main():
         response = llm.invoke(prompt)
         return {"file": file, "review_text": response.content}
 
-    def post_inline_comments(state):
+    def post_inline_comments(state: ReviewState) -> dict:
+        """
+        Parses and posts inline comments. Optionally stores in DB.
+        """
         file = state["file"]
         review = state["review_text"]
         comments = parse_feedback_to_comments(review, file)
@@ -216,11 +264,19 @@ def main():
                 if snippet:
                     logger.info(snippet)
         elif not args.skip_inline_comments:
-            for c in comments:
-                snippet = extract_diff_snippet(file.patch or "", c['line'])
-                comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
-                vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
+            
+            if isinstance(vcs_client, GitHubClient):
+                batched_comments = [
+                    {**c, "file": file.filename, "patch": file.patch}
+                    for c in comments
+                ]
+                vcs_client.post_inline_review(batched_comments)
 
+            else:
+                for c in comments:
+                    snippet = extract_diff_snippet(file.patch or "", c['line'])
+                    comment_body = f"{c['body']}\n\n{snippet}" if snippet else c['body']
+                    vcs_client.post_comment(repo_name, pr_number, file.filename, c['line'], comment_body)
         if args.save_db:
             store_review_db(pr_number, file.filename, comments)
 
