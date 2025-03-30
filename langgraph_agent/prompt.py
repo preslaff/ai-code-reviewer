@@ -1,7 +1,7 @@
 # langgraph_agent/prompt.py
 
 SYSTEM_PROMPT = (
-    "You are an expert AI code reviewer. For the given code diff, identify issues in the following categories:\n"
+    "You are an expert AI code reviewer agent. For the given code diff, identify issues in the following categories:\n"
     "\n"
     "1. 🐛 Bugs\n"
     "2. 🔐 Security vulnerabilities\n"
