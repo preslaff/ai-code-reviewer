@@ -19,19 +19,21 @@ def store_review_db(pr_number, filename, comments):
     conn = sqlite3.connect("web_dashboard/reviews.db")
     cursor = conn.cursor()
     cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS reviews (
-            pr INTEGER,
-            file TEXT,
-            line INTEGER,
-            body TEXT
-        )
-        """
+    """
+    CREATE TABLE IF NOT EXISTS reviews (
+        pr_number INTEGER,
+        file_path TEXT,
+        line INTEGER,
+        comment TEXT
     )
+    """
+)
     for c in comments:
         cursor.execute(
-            "INSERT INTO reviews (pr, file, line, body) VALUES (?, ?, ?, ?)",
+            "INSERT INTO reviews (pr_number, file_path, line, comment) VALUES (?, ?, ?, ?)",
             (pr_number, filename, c["line"], c["body"]),
         )
+
+
     conn.commit()
     conn.close()
